@@ -3,6 +3,9 @@ import {
   SimplePool,
   nip19,
   nip04,
+  getPublicKey,
+  getEventHash,
+  getSignature
 } from 'nostr-tools'
 import { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
@@ -15,12 +18,15 @@ window.pool = pool
 window.nip19 = nip19
 window.nip04 = nip04
 window.pool = pool
+window.getPublicKey = getPublicKey
+window.getEventHash = getEventHash
+window.getSignature = getSignature
 
 function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/:npub?" element={<Page/>}/>
+        <Route path="/:npub?" element={<Page />} />
       </Routes>
     </Router>
   )
@@ -33,18 +39,19 @@ function Page() {
   const [followCount, setFollowCount] = useState(0)
   const [progress, setProgress] = useState(0)
   const [contacts, setContacts] = useState([])
+  const [showProgress, setShowProgress] = useState(false)
+  const [months, setMonths] = useState(3)
+  const [inactive, setInactive] = useState([])
   const [relays, setRelays] = useState([
-    'wss://relay.nostr.band',
     'wss://nos.lol',
     'wss://relay.damus.io',
-    'wss://nostr.bitcoiner.social/',
     'wss://nostr21.com/',
     'wss://nostr-pub.wellorder.net',
     'wss://offchain.pub',
-    'wss://nostr.shroomslab.net',
     'wss://relayable.org',
-    'wss://nostr.thank.eu'
-  ].map(r => [r, {read: true, write: true}]))
+    'wss://nostr.thank.eu',
+    'wss://rsslay.nostr.moe',
+  ].map(r => [r, { read: true, write: true }]))
 
   window.setProgress = setProgress
 
@@ -62,7 +69,7 @@ function Page() {
           .then(pubkey => {
             localStorage.setItem('pubkey', pubkey)
             setPubkey(pubkey)
-        }).catch(e => alert('couldnt get pubkey'))
+          }).catch(e => alert('couldnt get pubkey'))
       }, 200)
     }
   }, [npub])
@@ -88,8 +95,9 @@ function Page() {
   }
 
   window.getAllRelays = () => relays.map(r => r[0])
-  
+
   async function findProfile() {
+    setInactive([])
     let events = await pool.list(getAllRelays(), [{
       kinds: [0, 3],
       authors: [pubkey]
@@ -103,22 +111,61 @@ function Page() {
     follows = follows.tags.filter(t => t[0] === 'p').map(t => t[1])
     setContacts(follows)
     setFollowCount(follows.length)
-    setProfile(JSON.parse(profile.content))
+    let c = JSON.parse(profile.content)
+    c.name = c.name || c.display_name || c.displayName
+    setProfile(c)
   }
 
   async function loadData() {
+    setShowProgress(true)
+    const CHUNK_SIZE = 20
     const unfollow = []
-    for (const p of contacts) {
-        let count = (await pool.list(getReadRelays(), [{
-            authors: [p],
-            since: Math.floor(new Date('8/1/23') / 1000),
-            limit: 1
+    for (let i = 0; i < contacts.length; i += CHUNK_SIZE) {
+      setProgress(i / contacts.length * 100)
+      let promises = contacts.slice(i, i + CHUNK_SIZE).map(async p => [
+        p,
+        (await pool.list(getReadRelays(), [{
+          authors: [p],
+          since: Math.floor((new Date() - months * 30 * 24 * 60 * 60 * 1000) / 1000),
+          limit: 1
         }])).length
-        console.log(nip19.npubEncode(p), count)
-        if (count == 0) {
-            unfollow.push(p)
-        }
+      ])
+      let p = await Promise.all(promises)
+      p.filter(p => p[1] === 0).forEach(p => unfollow.push(p[0]))
     }
+    console.log('unfollow', unfollow)
+    setProgress(100)
+    setTimeout(() => setShowProgress(false), 2000)
+
+    let events = await pool.list(getAllRelays(), [{
+      kinds: [0],
+      authors: unfollow
+    }])
+    let profiles = {}
+    events.forEach(e => {
+      let list = profiles[e.pubkey] || []
+      profiles[e.pubkey] = list
+      list.push(e)
+    })
+  
+    // Identify pubkeys that were left out
+    const foundPubkeys = Object.keys(profiles)
+    const missingPubkeys = unfollow.filter(pubkey => !foundPubkeys.includes(pubkey))
+    const missingNpubs = missingPubkeys.map(pubkey => nip19.npubEncode(pubkey))
+    console.log('missing', missingNpubs)
+  
+    events = Object.values(profiles).map(list => {
+      list.sort((a, b) => b.created_at - a.created_at)
+      return list[0]
+    })
+    setInactive(events.map(e => {
+      const c = JSON.parse(e.content)
+      return {
+        pubkey: e.pubkey,
+        name: c.name || c.display_name || c.displayName,
+        picture: c.picture
+      }
+    }))
   }
 
   async function findRelays() {
@@ -134,29 +181,43 @@ function Page() {
       : event.tags
         .filter(t => t[0] === 'r')
         .map(t => [t[1], !t[2]
-          ? {read: true, write: true}
-          : {read: t[2] === 'read', write: t[2] === 'write'}])
+          ? { read: true, write: true }
+          : { read: t[2] === 'read', write: t[2] === 'write' }])
     console.log(relays)
     console.log(event)
     setRelays(relays)
+  }
+
+  function handleChangeMonths(e) {
+    setMonths(e.target.value)
   }
 
   return (
     <div className="App">
       <header className="App-header">
         <div className="container">
-          <img src={profile.picture} alt="" width={100}/>
+          <img src={profile.picture} alt="" width={100} />
           {' '}{profile.name}{' follows '}{followCount}{' nostriches'}
-          <p/>
+          <p />
           {/* <Link to='/'>Home</Link>{' '}
           <Link to='/npub1jk9h2jsa8hjmtm9qlcca942473gnyhuynz5rmgve0dlu6hpeazxqc3lqz7'>Ser</Link> */}
+          <p />
+          {!showProgress && <>
+            <button style={{fontSize: '25px'}} onClick={loadData}>Find profiles</button>{' '}
+            inactive for <input type="number" style={{width: '50px', fontSize: '25px'}} value={months} onChange={handleChangeMonths} /> months
+          </>}
+          {showProgress && <>
+            <p />
+            Finding inactive profiles...
+            <p />
+            <LinearProgress sx={{height: 50}} variant="determinate" value={progress} />
+          </>}
           <p/>
-          <button onClick={loadData}>Find inactive profiles</button>
-          <p/>
-          Finding inactive profiles...
-          <p/>
-          <LinearProgress sx={{height:50}} variant="determinate" value={progress} />
-
+          {inactive.map(p => <div key={p.pubkey}>
+            <Link style={{fontSize: '20px', textDecoration: 'none'}} to={'/' + nip19.npubEncode(p.pubkey)}>
+              <img src={p.picture} width={50}/>{' '}{p.name}
+            </Link>
+          </div>)}
         </div>
       </header>
     </div>
