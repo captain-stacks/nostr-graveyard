@@ -39,7 +39,8 @@ function Page() {
   const [followCount, setFollowCount] = useState(0)
   const [progress, setProgress] = useState(0)
   const [contacts, setContacts] = useState([])
-  const [showProgress, setShowProgress] = useState(false)
+  const [showProgress, setShowProgress] = useState()
+  const [burying, setBurying] = useState()
   const [months, setMonths] = useState(3)
   const [inactive, setInactive] = useState([])
   const [relays, setRelays] = useState([
@@ -50,8 +51,35 @@ function Page() {
     'wss://offchain.pub',
     'wss://relayable.org',
     'wss://nostr.thank.eu',
-    'wss://rsslay.nostr.moe',
+    "wss://nostr.mom",
   ].map(r => [r, { read: true, write: true }]))
+
+  const writeRelays = [
+    "wss://relay.damus.io",
+    "wss://nos.lol",
+    "wss://nostr.bitcoiner.social",
+    "wss://nostr-pub.wellorder.net",
+    "wss://offchain.pub",
+    "wss://relay.nostr.bg",
+    "wss://nostr.mom",
+    "wss://relay.orangepill.dev",
+    "wss://atlas.nostr.land",
+    "wss://relay.nostrati.com",
+    "wss://relay.nostr.com.au",
+    "wss://nostr.inosta.cc",
+    "wss://nostr.fmt.wiz.biz",
+    "wss://nostr.plebchain.org",
+    "wss://relayable.org",
+    "wss://relay.plebstr.com",
+    "wss://relay.primal.net",
+    "wss://relay.nostriches.org",
+    "wss://relay.noswhere.com",
+    "wss://bitcoiner.social",
+    "wss://nostr.lu.ke",
+    "wss://nostr21.com",
+    "wss://relay.stoner.com",
+    'wss://nostr.thank.eu',
+  ]
 
   window.setProgress = setProgress
 
@@ -118,6 +146,8 @@ function Page() {
 
   async function loadData() {
     setShowProgress(true)
+    setInactive([])
+
     const CHUNK_SIZE = 20
     const unfollow = []
     for (let i = 0; i < contacts.length; i += CHUNK_SIZE) {
@@ -188,6 +218,59 @@ function Page() {
     setRelays(relays)
   }
 
+  async function buryThem() {
+    const inactivePubkeys = inactive.map(i => i.pubkey)
+    setInactive([])
+    setBurying(true)
+
+    const events = await Promise.all([
+      pool.get(getAllRelays(), {
+        kinds: [3],
+        authors: [await window.nostr.getPublicKey()]
+      }),
+      pool.get(getAllRelays(), {
+        kinds: [30_000],
+        authors: [await window.nostr.getPublicKey()],
+        '#d': ['nostr-graveyard']
+      })
+    ])
+    let [contactList, graveyard] = events
+    let follows = contactList.tags.filter(t => t[0] === 'p').map(t => t[1])
+    follows = follows.filter(f => !inactivePubkeys.includes(f))
+    contactList.tags = follows.map(p => ['p', p]).concat()
+    console.log('graveyard', graveyard)
+
+    graveyard ||= {
+      content: '',
+      pubkey: await window.nostr.getPublicKey(),
+      kind: 30_000,
+      tags: [
+        ["title", "Nostr Graveyard"],
+        ["description", "inactive profiles"],
+        ["d", "nostr-graveyard"]
+      ]
+    }
+    graveyard.id = null
+    graveyard.created_at = Math.floor(Date.now() / 1000)
+    const existingPubkeys = new Set(graveyard.tags.filter(t => t[0] === 'p').map(t => t[1]))
+    graveyard.tags = graveyard.tags.concat(inactivePubkeys.filter(p => !existingPubkeys.has(p)).map(p => ['p', p]))
+    graveyard = await window.nostr.signEvent(graveyard)
+    console.log('graveyard', graveyard)
+
+    contactList.id = null
+    contactList.created_at = Math.floor(Date.now() / 1000)
+    contactList = await window.nostr.signEvent(contactList)
+
+    Promise.all(pool.publish(writeRelays, graveyard))
+      .catch(e => console.log('error publishing', e))
+    Promise.all(pool.publish(writeRelays, contactList))
+      .catch(e => console.log('error publishing', e))
+    
+    setBurying(false)
+    alert('You have unfollowed the inactive profiles.')
+    findProfile()
+  }
+
   function handleChangeMonths(e) {
     setMonths(e.target.value)
   }
@@ -199,8 +282,6 @@ function Page() {
           <img src={profile.picture} alt="" width={100} />
           {' '}{profile.name}{' follows '}{followCount}{' nostriches'}
           <p />
-          {/* <Link to='/'>Home</Link>{' '}
-          <Link to='/npub1jk9h2jsa8hjmtm9qlcca942473gnyhuynz5rmgve0dlu6hpeazxqc3lqz7'>Ser</Link> */}
           <p />
           {!showProgress && <>
             <button style={{fontSize: '25px'}} onClick={loadData}>Find profiles</button>{' '}
@@ -213,10 +294,18 @@ function Page() {
             <LinearProgress sx={{height: 50}} variant="determinate" value={progress} />
           </>}
           <p/>
+          {inactive.length > 0 && <button style={{fontSize: '25px'}} onClick={buryThem}>Bury them</button>}
+          {burying && <LinearProgress/>}
+          <p/>
           {inactive.map(p => <div key={p.pubkey}>
-            <Link style={{fontSize: '20px', textDecoration: 'none'}} to={'/' + nip19.npubEncode(p.pubkey)}>
-              <img src={p.picture} width={50}/>{' '}{p.name}
-            </Link>
+            <div style={{fontSize: '20px', textDecoration: 'none'}}>
+              <Link to={'/' + nip19.npubEncode(p.pubkey)}>
+                <img src={p.picture} width={50} />
+              </Link>{' '}
+              <Link to={'https://primal.net/p/' + nip19.npubEncode(p.pubkey)} target='_blank'>
+                {p.name}
+              </Link>
+            </div>
           </div>)}
         </div>
       </header>
