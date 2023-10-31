@@ -52,7 +52,7 @@ function Page() {
     'wss://relayable.org',
     'wss://nostr.thank.eu',
     "wss://nostr.mom",
-  ].map(r => [r, { read: true, write: true }]))
+      ].map(r => [r, { read: true, write: true }]))
 
   const writeRelays = [
     "wss://relay.damus.io",
@@ -235,10 +235,7 @@ function Page() {
       })
     ])
     let [contactList, graveyard] = events
-    let follows = contactList.tags.filter(t => t[0] === 'p').map(t => t[1])
-    follows = follows.filter(f => !inactivePubkeys.includes(f))
-    contactList.tags = follows.map(p => ['p', p]).concat()
-    console.log('graveyard', graveyard)
+    contactList.tags = contactList.tags.filter(f => !inactivePubkeys.includes(f[1]))
 
     graveyard ||= {
       content: '',
@@ -255,7 +252,6 @@ function Page() {
     const existingPubkeys = new Set(graveyard.tags.filter(t => t[0] === 'p').map(t => t[1]))
     graveyard.tags = graveyard.tags.concat(inactivePubkeys.filter(p => !existingPubkeys.has(p)).map(p => ['p', p]))
     graveyard = await window.nostr.signEvent(graveyard)
-    console.log('graveyard', graveyard)
 
     contactList.id = null
     contactList.created_at = Math.floor(Date.now() / 1000)
