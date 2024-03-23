@@ -47,38 +47,30 @@ function Page() {
     'wss://nos.lol',
     'wss://relay.damus.io',
     'wss://nostr21.com/',
-    'wss://nostr-pub.wellorder.net',
     'wss://offchain.pub',
     'wss://relayable.org',
     'wss://nostr.thank.eu',
     "wss://nostr.mom",
-      ].map(r => [r, { read: true, write: true }]))
+  ].map(r => [r, { read: true, write: true }]))
 
   const writeRelays = [
-    "wss://relay.damus.io",
     "wss://nos.lol",
-    "wss://nostr.bitcoiner.social",
-    "wss://nostr-pub.wellorder.net",
+    "wss://relay.damus.io",
+    "wss://nostr21.com",
     "wss://offchain.pub",
-    "wss://relay.nostr.bg",
+    "wss://relayable.org",
+    'wss://nostr.thank.eu',
     "wss://nostr.mom",
-    "wss://relay.orangepill.dev",
-    "wss://atlas.nostr.land",
+    "wss://nostr.bitcoiner.social",
+    "wss://relay.nostr.bg",
     "wss://relay.nostrati.com",
-    "wss://relay.nostr.com.au",
     "wss://nostr.inosta.cc",
     "wss://nostr.fmt.wiz.biz",
     "wss://nostr.plebchain.org",
-    "wss://relayable.org",
-    "wss://relay.plebstr.com",
     "wss://relay.primal.net",
-    "wss://relay.nostriches.org",
-    "wss://relay.noswhere.com",
     "wss://bitcoiner.social",
     "wss://nostr.lu.ke",
-    "wss://nostr21.com",
     "wss://relay.stoner.com",
-    'wss://nostr.thank.eu',
   ]
 
   window.setProgress = setProgress
@@ -115,14 +107,16 @@ function Page() {
   }
 
   function getWriteRelays() {
-    return relays.filter(r => r[1].write).map(r => r[0])
+    return writeRelays
   }
 
   function getAllRelays() {
     return relays.map(r => r[0])
   }
 
-  window.getAllRelays = () => relays.map(r => r[0])
+  window.getReadRelays = getReadRelays
+  window.getWriteRelays = getWriteRelays
+  window.getAllRelays = getAllRelays
 
   async function findProfile() {
     setInactive([])
