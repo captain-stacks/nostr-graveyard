@@ -48,9 +48,12 @@ function Page() {
     'wss://relay.damus.io',
     'wss://nostr21.com/',
     'wss://offchain.pub',
-    'wss://relayable.org',
     'wss://nostr.thank.eu',
     "wss://nostr.mom",
+    'wss://nostr.oxtr.dev',
+    'wss://nos.lol/',
+    'wss://nostr.fmt.wiz.biz',
+    //'wss://brb.io'
   ].map(r => [r, { read: true, write: true }]))
 
   const writeRelays = [
@@ -58,7 +61,6 @@ function Page() {
     "wss://relay.damus.io",
     "wss://nostr21.com",
     "wss://offchain.pub",
-    "wss://relayable.org",
     'wss://nostr.thank.eu',
     "wss://nostr.mom",
     "wss://nostr.bitcoiner.social",
@@ -138,11 +140,9 @@ function Page() {
     setProfile(c)
   }
 
-  async function loadData() {
-    setShowProgress(true)
-    setInactive([])
+  const CHUNK_SIZE = 20
 
-    const CHUNK_SIZE = 20
+  const getInactiveContacts = async (contacts, months) => {
     const unfollow = []
     for (let i = 0; i < contacts.length; i += CHUNK_SIZE) {
       setProgress(i / contacts.length * 100)
@@ -157,39 +157,67 @@ function Page() {
       let p = await Promise.all(promises)
       p.filter(p => p[1] === 0).forEach(p => unfollow.push(p[0]))
     }
-    console.log('unfollow', unfollow)
-    setProgress(100)
-    setTimeout(() => setShowProgress(false), 2000)
-
-    let events = await pool.list(getAllRelays(), [{
+    return unfollow
+  }
+  
+  const getEvents = async (unfollow) => {
+    return await pool.list(getAllRelays(), [{
       kinds: [0],
       authors: unfollow
     }])
+  }
+  
+  const getProfiles = (events) => {
     let profiles = {}
     events.forEach(e => {
       let list = profiles[e.pubkey] || []
       profiles[e.pubkey] = list
       list.push(e)
     })
+    return profiles
+  }
   
-    // Identify pubkeys that were left out
+  const getMissingPubkeys = (unfollow, profiles) => {
     const foundPubkeys = Object.keys(profiles)
-    const missingPubkeys = unfollow.filter(pubkey => !foundPubkeys.includes(pubkey))
-    const missingNpubs = missingPubkeys.map(pubkey => nip19.npubEncode(pubkey))
-    console.log('missing', missingNpubs)
+    return unfollow.filter(pubkey => !foundPubkeys.includes(pubkey))
+  }
   
-    events = Object.values(profiles).map(list => {
+  const getInactiveProfiles = (profiles) => {
+    return Object.values(profiles).map(list => {
       list.sort((a, b) => b.created_at - a.created_at)
       return list[0]
     })
-    setInactive(events.map(e => {
+  }
+  
+  const mapToInactive = (events) => {
+    return events.map(e => {
       const c = JSON.parse(e.content)
       return {
         pubkey: e.pubkey,
         name: c.name || c.display_name || c.displayName,
         picture: c.picture
       }
-    }))
+    })
+  }
+  
+  const loadData = async () => {
+    setShowProgress(true)
+    findProfile()
+
+    const unfollow = await getInactiveContacts(contacts, months)
+    console.log('unfollow', unfollow)
+    setProgress(100)
+    setTimeout(() => setShowProgress(false), 2_000)
+
+    let events = await getEvents(unfollow)
+    let profiles = getProfiles(events)
+
+    const missingPubkeys = getMissingPubkeys(unfollow, profiles)
+    const missingNpubs = missingPubkeys.map(pubkey => nip19.npubEncode(pubkey))
+    console.log('missing', missingNpubs)
+
+    events = getInactiveProfiles(profiles)
+    setInactive(mapToInactive(events))
   }
 
   async function findRelays() {
@@ -210,7 +238,10 @@ function Page() {
     console.log(relays)
     console.log(event)
     setRelays(relays)
+    console.log('relays', relays)
   }
+
+  window.findRelays = findRelays
 
   async function buryThem() {
     const inactivePubkeys = inactive.map(i => i.pubkey)
