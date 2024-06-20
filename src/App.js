@@ -4,8 +4,7 @@ import {
   nip19,
   nip04,
   getPublicKey,
-  getEventHash,
-  getSignature
+  getEventHash
 } from 'nostr-tools'
 import { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
@@ -20,7 +19,6 @@ window.nip04 = nip04
 window.pool = pool
 window.getPublicKey = getPublicKey
 window.getEventHash = getEventHash
-window.getSignature = getSignature
 
 function App() {
   return (
@@ -50,10 +48,7 @@ function Page() {
     'wss://offchain.pub',
     'wss://nostr.thank.eu',
     "wss://nostr.mom",
-    'wss://nostr.oxtr.dev',
-    'wss://nos.lol/',
-    'wss://nostr.fmt.wiz.biz',
-    //'wss://brb.io'
+    // "ws://umbrel.local:4848"
   ].map(r => [r, { read: true, write: true }]))
 
   const writeRelays = [
@@ -122,10 +117,10 @@ function Page() {
 
   async function findProfile() {
     setInactive([])
-    let events = await pool.list(getAllRelays(), [{
+    let events = await pool.querySync(getReadRelays(), {
       kinds: [0, 3],
       authors: [pubkey]
-    }])
+    })
     let profile = events.filter(e => e.kind === 0)
     profile.sort((a, b) => b.created_at - a.created_at)
     profile = profile[0]
@@ -133,198 +128,224 @@ function Page() {
     follows.sort((a, b) => b.created_at - a.created_at)
     follows = follows[0]
     follows = follows.tags.filter(t => t[0] === 'p').map(t => t[1])
+    //follows = follows.slice(0, 5)
+    follows = [
+      "ee11a5dff40c19a555f41fe42b48f00e618c91225622ae37b6c2bb67b76c4e49",
+      "82456d0f84713f9c92b71b5d3108091aad058500f9c92d50db301a4a0f185b5e",
+      "5c3ac592e4b12e62bdc7c975a2407f58484bf9c816d1c299f52f2469142ca38e",
+      "db4e057ef8242c0aeef6c16bbc5cc235a5f31ef81f7bf92764b2551b0acf0ddf",
+      "97b6c917552120de06220ba19bc6532a9a914f7d8cc52b5dfce0c6537f170cb5",
+      "44dc1c2db9c3fbd7bee9257eceb52be3cf8c40baf7b63f46e56b58a131c74f0b",
+      "2efaa715bbb46dd5be6b7da8d7700266d11674b913b8178addb5c2e63d987331",
+    ]
+    //follows.push(pubkey)
     setContacts(follows)
-    setFollowCount(follows.length)
+    window.follows = follows
+    const followCount = follows.length
+    setFollowCount(followCount)
     let c = JSON.parse(profile.content)
-    c.name = c.name || c.display_name || c.displayName
+    c.name = c.name || c.display_name || c.displayName || c.username
+    c.npub = nip19.npubEncode(pubkey)
     setProfile(c)
-  }
 
-  const CHUNK_SIZE = 20
+    let allEvents = await pool.querySync(getReadRelays(), {
+      kinds: [0, 3],
+      authors: follows
+    })
 
-  const getInactiveContacts = async (contacts, months) => {
-    const unfollow = []
-    for (let i = 0; i < contacts.length; i += CHUNK_SIZE) {
-      setProgress(i / contacts.length * 100)
-      let promises = contacts.slice(i, i + CHUNK_SIZE).map(async p => [
-        p,
-        (await pool.list(getReadRelays(), [{
-          authors: [p],
-          since: Math.floor((new Date() - months * 30 * 24 * 60 * 60 * 1000) / 1000),
-          limit: 1
-        }])).length
-      ])
-      let p = await Promise.all(promises)
-      p.filter(p => p[1] === 0).forEach(p => unfollow.push(p[0]))
+    let profileMap = {}
+    allEvents.filter(e => e.kind === 0).forEach(e => {
+      let list = profileMap[e.pubkey] || []
+      profileMap[e.pubkey] = list
+      list.push(e)
+    })
+    events = Object.values(profileMap).map(list => {
+      list.sort((a, b) => b.created_at - a.created_at)
+      return list[0]
+    })
+    console.log(events)
+    profileMap = {}
+    events.forEach(e => {
+      profileMap[e.pubkey] = JSON.parse(e.content).website
+    })
+    console.log(profileMap)
+    window.profileMap = profileMap
+
+    let followMap = {}
+    allEvents.filter(e => e.kind === 3).forEach(e => {
+      let list = followMap[e.pubkey] || []
+      followMap[e.pubkey] = list
+      list.push(e)
+    })
+
+    events = Object.values(followMap).map(list => {
+      list.sort((a, b) => b.created_at - a.created_at)
+      return list[0]
+    })
+    //console.log(events)
+
+    let followedBy = {}
+    events.filter(e => profileMap[e.pubkey]).forEach(follower => {
+      follower.tags.filter(t => t[0] === 'p').map(t => t[1]).forEach(followee => {
+        followedBy[followee] = followedBy[followee] || new Set()
+        followedBy[followee].add(follower.pubkey)
+      })
+    })
+    window.followedBy = followedBy
+
+    let mutuals = new Mutuals()
+    const sg = new SocialGraph()
+
+    for (let [k, v] of Object.entries(followedBy)) {
+      for (let f of v) {
+        mutuals.addEdge(k, f)
+      }
     }
-    return unfollow
+    let mc = mutuals.findMutualConnections()
+    console.log('mutual', mc)
+    window.mc = mc
+    mc.forEach(p => {
+        sg.addEdge(p[0], p[1])
+    })
+    const cl = sg.findCliques()
+    console.log(cl)
+    window.cl = cl
   }
-  
-  const getEvents = async (unfollow) => {
-    return await pool.list(getAllRelays(), [{
+
+  async function loadData(unfollow) {
+    setInactive([])
+
+    let events = await pool.querySync(getAllRelays(), {
       kinds: [0],
       authors: unfollow
-    }])
-  }
-  
-  const getProfiles = (events) => {
+    })
     let profiles = {}
     events.forEach(e => {
       let list = profiles[e.pubkey] || []
       profiles[e.pubkey] = list
       list.push(e)
     })
-    return profiles
-  }
   
-  const getMissingPubkeys = (unfollow, profiles) => {
-    const foundPubkeys = Object.keys(profiles)
-    return unfollow.filter(pubkey => !foundPubkeys.includes(pubkey))
-  }
-  
-  const getInactiveProfiles = (profiles) => {
-    return Object.values(profiles).map(list => {
+    events = Object.values(profiles).map(list => {
       list.sort((a, b) => b.created_at - a.created_at)
       return list[0]
     })
-  }
-  
-  const mapToInactive = (events) => {
-    return events.map(e => {
+    let profileMap = window.profileMap
+    setInactive(events.map(e => {
       const c = JSON.parse(e.content)
       return {
         pubkey: e.pubkey,
         name: c.name || c.display_name || c.displayName,
-        picture: c.picture
+        picture: c.picture,
+        website: profileMap[e.pubkey]
       }
-    })
+    }))
   }
-  
-  const loadData = async () => {
-    setShowProgress(true)
-    findProfile()
+  window.loadData = loadData
 
-    const unfollow = await getInactiveContacts(contacts, months)
-    console.log('unfollow', unfollow)
-    setProgress(100)
-    setTimeout(() => setShowProgress(false), 2_000)
 
-    let events = await getEvents(unfollow)
-    let profiles = getProfiles(events)
-
-    const missingPubkeys = getMissingPubkeys(unfollow, profiles)
-    const missingNpubs = missingPubkeys.map(pubkey => nip19.npubEncode(pubkey))
-    console.log('missing', missingNpubs)
-
-    events = getInactiveProfiles(profiles)
-    setInactive(mapToInactive(events))
-  }
-
-  async function findRelays() {
-    let events = await pool.list(getAllRelays(), [{
-      kinds: [3, 10_002],
-      authors: [await window.nostr.getPublicKey()]
-    }])
-    events = events.filter(e => !(e.kind === 3 && !e.content))
-    events.sort((a, b) => b.created_at - a.created_at)
-    let event = events[0]
-    let relays = event.kind === 3
-      ? Object.entries(JSON.parse(event.content))
-      : event.tags
-        .filter(t => t[0] === 'r')
-        .map(t => [t[1], !t[2]
-          ? { read: true, write: true }
-          : { read: t[2] === 'read', write: t[2] === 'write' }])
-    console.log(relays)
-    console.log(event)
-    setRelays(relays)
-    console.log('relays', relays)
-  }
-
-  window.findRelays = findRelays
-
-  async function buryThem() {
-    const inactivePubkeys = inactive.map(i => i.pubkey)
-    setInactive([])
-    setBurying(true)
-
-    const events = await Promise.all([
-      pool.get(getAllRelays(), {
-        kinds: [3],
-        authors: [await window.nostr.getPublicKey()]
-      }),
-      pool.get(getAllRelays(), {
-        kinds: [30_000],
-        authors: [await window.nostr.getPublicKey()],
-        '#d': ['nostr-graveyard']
-      })
-    ])
-    let [contactList, graveyard] = events
-    contactList.tags = contactList.tags.filter(f => !inactivePubkeys.includes(f[1]))
-
-    graveyard ||= {
-      content: '',
-      pubkey: await window.nostr.getPublicKey(),
-      kind: 30_000,
-      tags: [
-        ["title", "Nostr Graveyard"],
-        ["description", "inactive profiles"],
-        ["d", "nostr-graveyard"]
-      ]
+  class Mutuals {
+    constructor() {
+        this.graph = new Map();
     }
-    graveyard.id = null
-    graveyard.created_at = Math.floor(Date.now() / 1000)
-    const existingPubkeys = new Set(graveyard.tags.filter(t => t[0] === 'p').map(t => t[1]))
-    graveyard.tags = graveyard.tags.concat(inactivePubkeys.filter(p => !existingPubkeys.has(p)).map(p => ['p', p]))
-    graveyard = await window.nostr.signEvent(graveyard)
 
-    contactList.id = null
-    contactList.created_at = Math.floor(Date.now() / 1000)
-    contactList = await window.nostr.signEvent(contactList)
+    addEdge(u, v) {
+        if (u === v) return
+        if (!this.graph.has(u)) this.graph.set(u, new Set());
+        this.graph.get(u).add(v);
+    }
 
-    Promise.all(pool.publish(writeRelays, graveyard))
-      .catch(e => console.log('error publishing', e))
-    Promise.all(pool.publish(writeRelays, contactList))
-      .catch(e => console.log('error publishing', e))
-    
-    setBurying(false)
-    alert('You have unfollowed the inactive profiles.')
-    findProfile()
+    findMutualConnections() {
+        const mutualConnections = [];
+        for (let [u, neighbors] of this.graph) {
+            for (let v of neighbors) {
+                if (this.graph.has(v) && this.graph.get(v).has(u)) {
+                    mutualConnections.push([u, v]);
+                }
+            }
+        }
+        return mutualConnections;
+    }
+  }
+  window.Mutuals = Mutuals
+
+  class SocialGraph {
+    constructor() {
+        this.graph = new Map();
+    }
+
+    addEdge(u, v) {
+        if (!this.graph.has(u)) this.graph.set(u, new Set());
+        if (!this.graph.has(v)) this.graph.set(v, new Set());
+        this.graph.get(u).add(v);
+        this.graph.get(v).add(u);
+    }
+
+    removeEdge(u, v) {
+        if (this.graph.has(u)) this.graph.get(u).delete(v);
+        if (this.graph.has(v)) this.graph.get(v).delete(u);
+    }
+
+    display() {
+        for (let [node, neighbors] of this.graph) {
+            console.log(`${node}: ${Array.from(neighbors).join(", ")}`);
+        }
+    }
+
+    findCliques() {
+        const cliques = [];
+        const stack = [{
+            R: new Set(),
+            P: new Set(this.graph.keys()),
+            X: new Set()
+        }];
+
+        while (stack.length > 0) {
+            const { R, P, X } = stack.pop();
+
+            if (P.size === 0 && X.size === 0) {
+                cliques.push(R);
+                continue;
+            }
+
+            let pivot = P.size > 0 ? P.values().next().value : X.values().next().value;
+            const pivotNeighbors = this.graph.get(pivot);
+
+            const PWithoutNeighbors = new Set([...P].filter(v => !pivotNeighbors.has(v)));
+            for (let v of PWithoutNeighbors) {
+                const neighbors = this.graph.get(v);
+                stack.push({
+                    R: new Set([...R, v]),
+                    P: new Set([...P].filter(u => neighbors.has(u))),
+                    X: new Set([...X].filter(u => neighbors.has(u)))
+                });
+                P.delete(v);
+                X.add(v);
+            }
+        }
+
+        return cliques;
+    }
   }
 
-  function handleChangeMonths(e) {
-    setMonths(e.target.value)
-  }
+
+  window.SocialGraph = SocialGraph
+
 
   return (
     <div className="App">
       <header className="App-header">
         <div className="container">
           <img src={profile.picture} alt="" width={100} />
-          {' '}{profile.name}{' follows '}{followCount}{' nostriches'}
+          {' '}{profile.name}'s webring
           <p />
-          <p />
-          {!showProgress && <>
-            <button style={{fontSize: '25px'}} onClick={loadData}>Find profiles</button>{' '}
-            inactive for <input type="number" style={{width: '50px', fontSize: '25px'}} value={months} onChange={handleChangeMonths} /> months
-          </>}
-          {showProgress && <>
-            <p />
-            Finding inactive profiles...
-            <p />
-            <LinearProgress sx={{height: 50}} variant="determinate" value={progress} />
-          </>}
-          <p/>
-          {inactive.length > 0 && <button style={{fontSize: '25px'}} onClick={buryThem}>Bury them</button>}
-          {burying && <LinearProgress/>}
-          <p/>
           {inactive.map(p => <div key={p.pubkey}>
             <div style={{fontSize: '20px', textDecoration: 'none'}}>
               <Link to={'/' + nip19.npubEncode(p.pubkey)}>
                 <img src={p.picture} width={50} />
               </Link>{' '}
-              <Link to={'https://primal.net/p/' + nip19.npubEncode(p.pubkey)} target='_blank'>
-                {p.name}
+              <Link to={p.website} target='_blank'>
+                {p.website}
               </Link>
             </div>
           </div>)}
