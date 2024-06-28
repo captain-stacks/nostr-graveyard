@@ -172,7 +172,7 @@ function Page() {
     console.log(events)
     profileMap = {}
     events.forEach(e => {
-      profileMap[e.pubkey] = createProfileRow(e);
+      profileMap[e.pubkey] = createProfileRow(e)
     })
     console.log(profileMap)
     window.profileMap = profileMap
@@ -238,85 +238,85 @@ function Page() {
 
   class Mutuals {
     constructor() {
-        this.graph = new Map();
+        this.graph = new Map()
     }
 
     addEdge(u, v) {
         if (u === v) return
-        if (!this.graph.has(u)) this.graph.set(u, new Set());
-        this.graph.get(u).add(v);
+        if (!this.graph.has(u)) this.graph.set(u, new Set())
+        this.graph.get(u).add(v)
     }
 
     findMutualConnections() {
-        const mutualConnections = [];
+        const mutualConnections = []
         for (let [u, neighbors] of this.graph) {
             for (let v of neighbors) {
                 if (this.graph.has(v) && this.graph.get(v).has(u)) {
-                    mutualConnections.push([u, v]);
+                    mutualConnections.push([u, v])
                 }
             }
         }
-        return mutualConnections;
+        return mutualConnections
     }
   }
   window.Mutuals = Mutuals
 
   class SocialGraph {
     constructor() {
-        this.graph = new Map();
+        this.graph = new Map()
     }
 
     addEdge(u, v) {
-        if (!this.graph.has(u)) this.graph.set(u, new Set());
-        if (!this.graph.has(v)) this.graph.set(v, new Set());
-        this.graph.get(u).add(v);
-        this.graph.get(v).add(u);
+        if (!this.graph.has(u)) this.graph.set(u, new Set())
+        if (!this.graph.has(v)) this.graph.set(v, new Set())
+        this.graph.get(u).add(v)
+        this.graph.get(v).add(u)
     }
 
     removeEdge(u, v) {
-        if (this.graph.has(u)) this.graph.get(u).delete(v);
-        if (this.graph.has(v)) this.graph.get(v).delete(u);
+        if (this.graph.has(u)) this.graph.get(u).delete(v)
+        if (this.graph.has(v)) this.graph.get(v).delete(u)
     }
 
     display() {
         for (let [node, neighbors] of this.graph) {
-            console.log(`${node}: ${Array.from(neighbors).join(", ")}`);
+            console.log(`${node}: ${Array.from(neighbors).join(", ")}`)
         }
     }
 
     findCliques() {
-        const cliques = [];
+        const cliques = []
         const stack = [{
             R: new Set(),
             P: new Set(this.graph.keys()),
             X: new Set()
-        }];
+        }]
 
         while (stack.length > 0) {
-            const { R, P, X } = stack.pop();
+            const { R, P, X } = stack.pop()
 
             if (P.size === 0 && X.size === 0) {
-                cliques.push(R);
-                continue;
+                cliques.push(R)
+                continue
             }
 
-            let pivot = P.size > 0 ? P.values().next().value : X.values().next().value;
-            const pivotNeighbors = this.graph.get(pivot);
+            let pivot = P.size > 0 ? P.values().next().value : X.values().next().value
+            const pivotNeighbors = this.graph.get(pivot)
 
-            const PWithoutNeighbors = new Set([...P].filter(v => !pivotNeighbors.has(v)));
+            const PWithoutNeighbors = new Set([...P].filter(v => !pivotNeighbors.has(v)))
             for (let v of PWithoutNeighbors) {
-                const neighbors = this.graph.get(v);
+                const neighbors = this.graph.get(v)
                 stack.push({
                     R: new Set([...R, v]),
                     P: new Set([...P].filter(u => neighbors.has(u))),
                     X: new Set([...X].filter(u => neighbors.has(u)))
-                });
-                P.delete(v);
-                X.add(v);
+                })
+                P.delete(v)
+                X.add(v)
             }
         }
 
-        return cliques;
+        return cliques
     }
   }
 
