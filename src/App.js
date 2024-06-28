@@ -41,6 +41,11 @@ function Page() {
   const [burying, setBurying] = useState()
   const [months, setMonths] = useState(3)
   const [inactive, setInactive] = useState([])
+  const [cliques, setCliques] = useState([])
+
+  window.setCliques = setCliques
+  window.setInactive = setInactive
+
   const [relays, setRelays] = useState([
     'wss://nos.lol',
     'wss://relay.damus.io',
@@ -117,6 +122,7 @@ function Page() {
 
   async function findProfile() {
     setInactive([])
+    setCliques([])
     let events = await pool.querySync(getReadRelays(), {
       kinds: [0, 3],
       authors: [pubkey]
@@ -129,16 +135,16 @@ function Page() {
     follows = follows[0]
     follows = follows.tags.filter(t => t[0] === 'p').map(t => t[1])
     //follows = follows.slice(0, 5)
-    follows = [
-      "ee11a5dff40c19a555f41fe42b48f00e618c91225622ae37b6c2bb67b76c4e49",
-      "82456d0f84713f9c92b71b5d3108091aad058500f9c92d50db301a4a0f185b5e",
-      "5c3ac592e4b12e62bdc7c975a2407f58484bf9c816d1c299f52f2469142ca38e",
-      "db4e057ef8242c0aeef6c16bbc5cc235a5f31ef81f7bf92764b2551b0acf0ddf",
-      "97b6c917552120de06220ba19bc6532a9a914f7d8cc52b5dfce0c6537f170cb5",
-      "44dc1c2db9c3fbd7bee9257eceb52be3cf8c40baf7b63f46e56b58a131c74f0b",
-      "2efaa715bbb46dd5be6b7da8d7700266d11674b913b8178addb5c2e63d987331",
-    ]
-    //follows.push(pubkey)
+    // follows = [
+    //   "ee11a5dff40c19a555f41fe42b48f00e618c91225622ae37b6c2bb67b76c4e49",
+    //   "82456d0f84713f9c92b71b5d3108091aad058500f9c92d50db301a4a0f185b5e",
+    //   "5c3ac592e4b12e62bdc7c975a2407f58484bf9c816d1c299f52f2469142ca38e",
+    //   "db4e057ef8242c0aeef6c16bbc5cc235a5f31ef81f7bf92764b2551b0acf0ddf",
+    //   "97b6c917552120de06220ba19bc6532a9a914f7d8cc52b5dfce0c6537f170cb5",
+    //   "44dc1c2db9c3fbd7bee9257eceb52be3cf8c40baf7b63f46e56b58a131c74f0b",
+    //   "2efaa715bbb46dd5be6b7da8d7700266d11674b913b8178addb5c2e63d987331",
+    // ]
+    follows.push(pubkey)
     setContacts(follows)
     window.follows = follows
     const followCount = follows.length
@@ -166,7 +172,7 @@ function Page() {
     console.log(events)
     profileMap = {}
     events.forEach(e => {
-      profileMap[e.pubkey] = JSON.parse(e.content).website
+      profileMap[e.pubkey] = createProfileRow(e);
     })
     console.log(profileMap)
     window.profileMap = profileMap
@@ -207,42 +213,28 @@ function Page() {
     mc.forEach(p => {
         sg.addEdge(p[0], p[1])
     })
-    const cl = sg.findCliques()
+    const cl = sg.findCliques().sort((a, b) => b.size - a.size) // sort by size of clique in descending order 
     console.log(cl)
     window.cl = cl
+    //setInactive(await loadData(follows))
+    Promise.all(cl.map(item => loadData(Array.from(item)))).then(setCliques)
   }
 
   async function loadData(unfollow) {
-    setInactive([])
-
-    let events = await pool.querySync(getAllRelays(), {
-      kinds: [0],
-      authors: unfollow
-    })
-    let profiles = {}
-    events.forEach(e => {
-      let list = profiles[e.pubkey] || []
-      profiles[e.pubkey] = list
-      list.push(e)
-    })
-  
-    events = Object.values(profiles).map(list => {
-      list.sort((a, b) => b.created_at - a.created_at)
-      return list[0]
-    })
     let profileMap = window.profileMap
-    setInactive(events.map(e => {
-      const c = JSON.parse(e.content)
-      return {
-        pubkey: e.pubkey,
-        name: c.name || c.display_name || c.displayName,
-        picture: c.picture,
-        website: profileMap[e.pubkey]
-      }
-    }))
+    return unfollow.filter(p => p !== pubkey).map(p => profileMap[p])
   }
   window.loadData = loadData
 
+  function createProfileRow(e) {
+    const c = JSON.parse(e.content)
+    return {
+      pubkey: e.pubkey,
+      name: c.name || c.display_name || c.displayName,
+      picture: c.picture,
+      website: c.website
+    }
+  }
 
   class Mutuals {
     constructor() {
@@ -337,7 +329,7 @@ function Page() {
       <header className="App-header">
         <div className="container">
           <img src={profile.picture} alt="" width={100} />
-          {' '}{profile.name}'s webring
+          {' '}{profile.name}'s webrings
           <p />
           {inactive.map(p => <div key={p.pubkey}>
             <div style={{fontSize: '20px', textDecoration: 'none'}}>
@@ -349,6 +341,23 @@ function Page() {
               </Link>
             </div>
           </div>)}
+          {cliques.map((clique, index) => (
+            <div key={index}>
+              <h5>Ring #{index + 1}</h5>
+              {clique.map(p => (
+                <div key={p.pubkey}>
+                  <div style={{fontSize: '20px', textDecoration: 'none'}}>
+                    <Link to={'/' + nip19.npubEncode(p.pubkey)}>
+                      <img src={p.picture} width={50} />
+                    </Link>{' '}
+                    <Link to={p.website} target='_blank'>
+                      {p.name} {p.website}
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       </header>
     </div>
