@@ -41,3 +41,38 @@
 a {
   color: #fff;
 }
+
+table tr:nth-child(odd) {
+  background-color: #f2f2f2;
+}
+
+table tr:nth-child(even) {
+  background-color: #ddd;
+}
+
+tr td:nth-child(2) {
+  padding-left: 15px;
+  width: 150px;
+}
+
+tr td:first-child {
+  padding: 0;
+  width: 50px;
+}
+
+table {
+  font-size: 20px;
+  width: 100%;
+}
+
+table img {
+  height: 50px;
+  width: 50px;
+  clip-path: inset(0 0 0 0);
+  object-fit: cover;
+}
+
+h5 {
+  margin-block-start: 20px;
+  margin-block-end: 5px;
+}

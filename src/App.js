@@ -9,6 +9,8 @@ import {
 import { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
 import { useParams } from 'react-router-dom'
+import Mutuals from './Mutuals'
+import SocialGraph from './SocialGraph'
 import Box from '@mui/material/Box'
 import LinearProgress from '@mui/material/LinearProgress'
 
@@ -20,7 +22,7 @@ window.pool = pool
 window.getPublicKey = getPublicKey
 window.getEventHash = getEventHash
 
-function App() {
+export default function App() {
   return (
     <Router>
       <Routes>
@@ -42,9 +44,6 @@ function Page() {
   const [months, setMonths] = useState(3)
   const [inactive, setInactive] = useState([])
   const [cliques, setCliques] = useState([])
-
-  window.setCliques = setCliques
-  window.setInactive = setInactive
 
   const [relays, setRelays] = useState([
     'wss://nos.lol',
@@ -74,8 +73,6 @@ function Page() {
     "wss://nostr.lu.ke",
     "wss://relay.stoner.com",
   ]
-
-  window.setProgress = setProgress
 
   useEffect(() => {
     let pubkey = npub ? nip19.decode(npub).data : localStorage.getItem('pubkey')
@@ -134,19 +131,8 @@ function Page() {
     follows.sort((a, b) => b.created_at - a.created_at)
     follows = follows[0]
     follows = follows.tags.filter(t => t[0] === 'p').map(t => t[1])
-    //follows = follows.slice(0, 5)
-    // follows = [
-    //   "ee11a5dff40c19a555f41fe42b48f00e618c91225622ae37b6c2bb67b76c4e49",
-    //   "82456d0f84713f9c92b71b5d3108091aad058500f9c92d50db301a4a0f185b5e",
-    //   "5c3ac592e4b12e62bdc7c975a2407f58484bf9c816d1c299f52f2469142ca38e",
-    //   "db4e057ef8242c0aeef6c16bbc5cc235a5f31ef81f7bf92764b2551b0acf0ddf",
-    //   "97b6c917552120de06220ba19bc6532a9a914f7d8cc52b5dfce0c6537f170cb5",
-    //   "44dc1c2db9c3fbd7bee9257eceb52be3cf8c40baf7b63f46e56b58a131c74f0b",
-    //   "2efaa715bbb46dd5be6b7da8d7700266d11674b913b8178addb5c2e63d987331",
-    // ]
     follows.push(pubkey)
     setContacts(follows)
-    window.follows = follows
     const followCount = follows.length
     setFollowCount(followCount)
     let c = JSON.parse(profile.content)
@@ -169,13 +155,18 @@ function Page() {
       list.sort((a, b) => b.created_at - a.created_at)
       return list[0]
     })
-    console.log(events)
+    // console.log(events)
     profileMap = {}
     events.forEach(e => {
-      profileMap[e.pubkey] = createProfileRow(e)
+      const c = JSON.parse(e.content)
+      profileMap[e.pubkey] = {
+        pubkey: e.pubkey,
+        name: c.name || c.display_name || c.displayName,
+        picture: c.picture,
+        website: c.website
+      }
     })
-    console.log(profileMap)
-    window.profileMap = profileMap
+    // console.log(profileMap)
 
     let followMap = {}
     allEvents.filter(e => e.kind === 3).forEach(e => {
@@ -197,7 +188,6 @@ function Page() {
         followedBy[followee].add(follower.pubkey)
       })
     })
-    window.followedBy = followedBy
 
     let mutuals = new Mutuals()
     const sg = new SocialGraph()
@@ -208,121 +198,19 @@ function Page() {
       }
     }
     let mc = mutuals.findMutualConnections()
-    console.log('mutual', mc)
-    window.mc = mc
+    // console.log('mutual', mc)
     mc.forEach(p => {
-        sg.addEdge(p[0], p[1])
+      sg.addEdge(p[0], p[1])
     })
-    const cl = sg.findCliques().sort((a, b) => b.size - a.size) // sort by size of clique in descending order 
-    console.log(cl)
-    window.cl = cl
+    const cl = sg.findCliques().sort((a, b) => b.size - a.size)
+    // console.log(cl)
     //setInactive(await loadData(follows))
-    Promise.all(cl.map(item => loadData(Array.from(item)))).then(setCliques)
+    Promise.all(cl.map(item => loadData(profileMap, Array.from(item)))).then(setCliques)
   }
 
-  async function loadData(unfollow) {
-    let profileMap = window.profileMap
-    return unfollow.filter(p => p !== pubkey).map(p => profileMap[p])
+  function loadData(profileMap, unfollow) {
+    return unfollow.filter(p => '' !== pubkey).map(p => profileMap[p])
   }
-  window.loadData = loadData
-
-  function createProfileRow(e) {
-    const c = JSON.parse(e.content)
-    return {
-      pubkey: e.pubkey,
-      name: c.name || c.display_name || c.displayName,
-      picture: c.picture,
-      website: c.website
-    }
-  }
-
-  class Mutuals {
-    constructor() {
-        this.graph = new Map()
-    }
-
-    addEdge(u, v) {
-        if (u === v) return
-        if (!this.graph.has(u)) this.graph.set(u, new Set())
-        this.graph.get(u).add(v)
-    }
-
-    findMutualConnections() {
-        const mutualConnections = []
-        for (let [u, neighbors] of this.graph) {
-            for (let v of neighbors) {
-                if (this.graph.has(v) && this.graph.get(v).has(u)) {
-                    mutualConnections.push([u, v])
-                }
-            }
-        }
-        return mutualConnections
-    }
-  }
-  window.Mutuals = Mutuals
-
-  class SocialGraph {
-    constructor() {
-        this.graph = new Map()
-    }
-
-    addEdge(u, v) {
-        if (!this.graph.has(u)) this.graph.set(u, new Set())
-        if (!this.graph.has(v)) this.graph.set(v, new Set())
-        this.graph.get(u).add(v)
-        this.graph.get(v).add(u)
-    }
-
-    removeEdge(u, v) {
-        if (this.graph.has(u)) this.graph.get(u).delete(v)
-        if (this.graph.has(v)) this.graph.get(v).delete(u)
-    }
-
-    display() {
-        for (let [node, neighbors] of this.graph) {
-            console.log(`${node}: ${Array.from(neighbors).join(", ")}`)
-        }
-    }
-
-    findCliques() {
-        const cliques = []
-        const stack = [{
-            R: new Set(),
-            P: new Set(this.graph.keys()),
-            X: new Set()
-        }]
-
-        while (stack.length > 0) {
-            const { R, P, X } = stack.pop()
-
-            if (P.size === 0 && X.size === 0) {
-                cliques.push(R)
-                continue
-            }
-
-            let pivot = P.size > 0 ? P.values().next().value : X.values().next().value
-            const pivotNeighbors = this.graph.get(pivot)
-
-            const PWithoutNeighbors = new Set([...P].filter(v => !pivotNeighbors.has(v)))
-            for (let v of PWithoutNeighbors) {
-                const neighbors = this.graph.get(v)
-                stack.push({
-                    R: new Set([...R, v]),
-                    P: new Set([...P].filter(u => neighbors.has(u))),
-                    X: new Set([...X].filter(u => neighbors.has(u)))
-                })
-                P.delete(v)
-                X.add(v)
-            }
-        }
-
-        return cliques
-    }
-  }
-
-
-  window.SocialGraph = SocialGraph
-
 
   return (
     <div className="App">
@@ -332,7 +220,7 @@ function Page() {
           {' '}{profile.name}'s webrings
           <p />
           {inactive.map(p => <div key={p.pubkey}>
-            <div style={{fontSize: '20px', textDecoration: 'none'}}>
+            <div style={{ fontSize: '20px', textDecoration: 'none' }}>
               <Link to={'/' + nip19.npubEncode(p.pubkey)}>
                 <img src={p.picture} width={50} />
               </Link>{' '}
@@ -343,19 +231,28 @@ function Page() {
           </div>)}
           {cliques.map((clique, index) => (
             <div key={index}>
-              <h5>Ring #{index + 1}</h5>
-              {clique.map(p => (
-                <div key={p.pubkey}>
-                  <div style={{fontSize: '20px', textDecoration: 'none'}}>
-                    <Link to={'/' + nip19.npubEncode(p.pubkey)}>
-                      <img src={p.picture} width={50} />
-                    </Link>{' '}
-                    <Link to={p.website} target='_blank'>
-                      {p.name} {p.website}
-                    </Link>
-                  </div>
-                </div>
-              ))}
+              <h5>Ring #{index + 1} (size: {clique.length})</h5>
+              <table>
+                <tbody>
+                  {clique.map(p => (
+                    <tr key={p.pubkey}>
+                      <td>
+                        <Link to={'/' + nip19.npubEncode(p.pubkey)}>
+                          <img src={p.picture} alt={p.name}/>
+                        </Link>
+                      </td>
+                      <td>
+                        {p.name}
+                      </td>
+                      <td>
+                        <Link to={p.website} target='_blank'>
+                          {p.website}
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ))}
         </div>
@@ -363,5 +260,3 @@ function Page() {
     </div>
   )
 }
-
-export default App
