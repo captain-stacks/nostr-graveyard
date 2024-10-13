@@ -48,7 +48,6 @@ function Page() {
     'wss://relay.damus.io',
     'wss://nostr21.com/',
     'wss://offchain.pub',
-    'wss://relayable.org',
     'wss://nostr.thank.eu',
     "wss://nostr.mom",
   ].map(r => [r, { read: true, write: true }]))
@@ -58,19 +57,17 @@ function Page() {
     "wss://relay.damus.io",
     "wss://nostr21.com",
     "wss://offchain.pub",
-    "wss://relayable.org",
     'wss://nostr.thank.eu',
     "wss://nostr.mom",
-    "wss://nostr.bitcoiner.social",
-    "wss://relay.nostr.bg",
-    "wss://relay.nostrati.com",
     "wss://nostr.inosta.cc",
     "wss://nostr.fmt.wiz.biz",
-    "wss://nostr.plebchain.org",
     "wss://relay.primal.net",
     "wss://bitcoiner.social",
     "wss://nostr.lu.ke",
-    "wss://relay.stoner.com",
+    "wss://nostr.oxtr.dev",
+    // "wss://relay.nostr.bg",
+    // "wss://relay.nostrati.com",
+    // "wss://nostr.plebchain.org",
   ]
 
   window.setProgress = setProgress
