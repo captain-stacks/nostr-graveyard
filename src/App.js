@@ -42,6 +42,7 @@ function Page() {
   const [burying, setBurying]           = useState()
   const [months, setMonths]             = useState(3)
   const [inactive, setInactive]         = useState([])
+  const [selectedApp, setSelectedApp]   = useState()
   const [relays, setRelays]             = useState([
     'wss://nos.lol',
     'wss://relay.damus.io',
@@ -264,6 +265,26 @@ function Page() {
     setMonths(e.target.value)
   }
 
+  const handleChangeApp = (e) => {
+    setSelectedApp(e.target.value)
+  }
+
+  const getProfileLink = (pubkey) => {
+    const npub = nip19.npubEncode(pubkey)
+    switch (selectedApp) {
+      case 'primal':
+        return `https://primal.net/p/${npub}`
+      case 'coracle':
+        return `https://coracle.social/people/${npub}`
+      case 'snort':
+        return `https://snort.social/p/${npub}`
+      case 'nostrudel':
+        return `https://nostrudel.ninja/#/u/${npub}`
+      default:
+        return `https://primal.net/p/${npub}`
+    }
+  }
+
   return (
     <div className="App">
       <header className="App-header">
@@ -283,15 +304,25 @@ function Page() {
             <LinearProgress sx={{height: 50}} variant="determinate" value={progress} />
           </>}
           <p/>
-          {inactive.length > 0 && <button style={{fontSize: '25px'}} onClick={buryThem}>Bury them</button>}
+          {inactive.length > 0 && <>
+            <label htmlFor="app-select" style={{fontSize: '20px'}}>Open profiles with: </label>
+            <select id="app-select" value={selectedApp} onChange={handleChangeApp}>
+              <option value="primal">Primal</option>
+              <option value="coracle">Coracle</option>
+              <option value="nostrudel">Nostrudel</option>
+              <option value="snort">Snort</option>
+            </select>
+            <p/>
+            <button style={{fontSize: '25px'}} onClick={buryThem}>Bury them</button>
+            <p/>
+          </>}
           {burying && <LinearProgress/>}
-          <p/>
           {inactive.map(p => <div key={p.pubkey}>
             <div style={{fontSize: '20px', textDecoration: 'none'}}>
               <Link to={'/' + nip19.npubEncode(p.pubkey)}>
                 <img src={p.picture} width={50} />
               </Link>{' '}
-              <Link to={'https://primal.net/p/' + nip19.npubEncode(p.pubkey)} target='_blank'>
+              <Link to={getProfileLink(p.pubkey)} target='_blank'>
                 {p.name}
               </Link>
             </div>
