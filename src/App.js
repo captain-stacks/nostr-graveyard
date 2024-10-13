@@ -13,14 +13,13 @@ import { useParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import LinearProgress from '@mui/material/LinearProgress'
 
-const pool = new SimplePool()
-window.pool = pool
-window.nip19 = nip19
-window.nip04 = nip04
-window.pool = pool
-window.getPublicKey = getPublicKey
-window.getEventHash = getEventHash
-window.getSignature = getSignature
+const pool             = new SimplePool()
+window.pool            = pool
+window.nip19           = nip19
+window.nip04           = nip04
+window.getPublicKey    = getPublicKey
+window.getEventHash    = getEventHash
+window.finalizeEvent   = finalizeEvent
 
 function App() {
   return (
@@ -33,17 +32,17 @@ function App() {
 }
 
 function Page() {
-  const { npub } = useParams()
-  const [pubkey, setPubkey] = useState()
-  const [profile, setProfile] = useState({})
-  const [followCount, setFollowCount] = useState(0)
-  const [progress, setProgress] = useState(0)
-  const [contacts, setContacts] = useState([])
+  const { npub }                        = useParams()
+  const [pubkey, setPubkey]             = useState()
+  const [profile, setProfile]           = useState({})
+  const [followCount, setFollowCount]   = useState(0)
+  const [progress, setProgress]         = useState(0)
+  const [contacts, setContacts]         = useState([])
   const [showProgress, setShowProgress] = useState()
-  const [burying, setBurying] = useState()
-  const [months, setMonths] = useState(3)
-  const [inactive, setInactive] = useState([])
-  const [relays, setRelays] = useState([
+  const [burying, setBurying]           = useState()
+  const [months, setMonths]             = useState(3)
+  const [inactive, setInactive]         = useState([])
+  const [relays, setRelays]             = useState([
     'wss://nos.lol',
     'wss://relay.damus.io',
     'wss://nostr21.com/',
