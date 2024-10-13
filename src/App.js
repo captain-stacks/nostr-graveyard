@@ -5,7 +5,7 @@ import {
   nip04,
   getPublicKey,
   getEventHash,
-  getSignature
+  finalizeEvent
 } from 'nostr-tools'
 import { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
@@ -119,10 +119,10 @@ function Page() {
 
   async function findProfile() {
     setInactive([])
-    let events = await pool.list(getAllRelays(), [{
+    let events = await pool.querySync(getAllRelays(), {
       kinds: [0, 3],
       authors: [pubkey]
-    }])
+    })
     let profile = events.filter(e => e.kind === 0)
     profile.sort((a, b) => b.created_at - a.created_at)
     profile = profile[0]
@@ -147,11 +147,11 @@ function Page() {
       setProgress(i / contacts.length * 100)
       let promises = contacts.slice(i, i + CHUNK_SIZE).map(async p => [
         p,
-        (await pool.list(getReadRelays(), [{
+        (await pool.querySync(getReadRelays(), {
           authors: [p],
           since: Math.floor((new Date() - months * 30 * 24 * 60 * 60 * 1000) / 1000),
           limit: 1
-        }])).length
+        })).length
       ])
       let p = await Promise.all(promises)
       p.filter(p => p[1] === 0).forEach(p => unfollow.push(p[0]))
@@ -160,10 +160,10 @@ function Page() {
     setProgress(100)
     setTimeout(() => setShowProgress(false), 2000)
 
-    let events = await pool.list(getAllRelays(), [{
+    let events = await pool.querySync(getAllRelays(), {
       kinds: [0],
       authors: unfollow
-    }])
+    })
     let profiles = {}
     events.forEach(e => {
       let list = profiles[e.pubkey] || []
@@ -192,10 +192,10 @@ function Page() {
   }
 
   async function findRelays() {
-    let events = await pool.list(getAllRelays(), [{
+    let events = await pool.querySync(getAllRelays(), {
       kinds: [3, 10_002],
       authors: [await window.nostr.getPublicKey()]
-    }])
+    })
     events = events.filter(e => !(e.kind === 3 && !e.content))
     events.sort((a, b) => b.created_at - a.created_at)
     let event = events[0]
