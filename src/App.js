@@ -151,7 +151,7 @@ function Page() {
         tags: []
       }
       event = await window.nostr.signEvent(event)
-      await Promise.all(pool.publish(getAllRelays(), graveyard))
+      await Promise.all(pool.publish(getAllRelays(), event))
         .catch(e => console.log('error publishing', e))
       setNewEventContent('')
       fetchEvents()
