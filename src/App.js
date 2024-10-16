@@ -12,6 +12,7 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
 import { useParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import LinearProgress from '@mui/material/LinearProgress'
+import emoji from 'emoji-dictionary'
 
 const pool             = new SimplePool()
 window.pool            = pool
@@ -20,6 +21,7 @@ window.nip04           = nip04
 window.getPublicKey    = getPublicKey
 window.getEventHash    = getEventHash
 window.finalizeEvent   = finalizeEvent
+window.emoji           = emoji
 
 function App() {
   return (
@@ -121,7 +123,7 @@ function Page() {
       events = events.filter((e, i) => events.findIndex(e2 => e2.id === e.id) === i)
       events = events.map(event => ({
         ...event,
-        content: replaceYouTubeLinks(event.content)
+        content: updateEventContent(event.content)
       }))
       setEvents(events)
       setLoading(false)
@@ -243,9 +245,10 @@ function Page() {
 function getAllRelays() {
   return [
     'wss://relay.snort.social',
-    "wss://nos.lol",
-    "wss://relay.damus.io",
-    "wss://nostr21.com",
+    'wss://nos.lol',
+    'wss://relay.damus.io',
+    'wss://nostr21.com',
+    'wss://theforest.nostr1.com',
   ]
 }
 
@@ -254,6 +257,18 @@ const replaceYouTubeLinks = (content) => {
   return content.replace(youtubeRegex, (match, p1) => {
     return `<iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/${p1}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`
   })
+}
+
+const replaceEmojisWithText = (content) => {
+  return content.replace(/([\p{Emoji_Presentation}\p{Extended_Pictographic}])/gu, (match) => {
+    return ':' + (emoji.getName(match) || `unknown (${match})`) + ':'
+  })
+}
+
+const updateEventContent = (content) => {
+  content = replaceYouTubeLinks(content)
+  content = replaceEmojisWithText(content)
+  return content
 }
 
 export default App
