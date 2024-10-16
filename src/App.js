@@ -73,7 +73,7 @@ function Page() {
 
   const fetchEvents = async (pubkey) => {
     try {
-      const since = Math.floor(Date.now() / 1000) - .5 * 24 * 60 * 60
+      const since = Math.floor(Date.now() / 1000) - 1 * 60 * 60
       const contactListEvents = await pool.querySync(getAllRelays(), {
         kinds: [3],
         authors: [pubkey]
