@@ -151,10 +151,10 @@ function Page() {
         tags: []
       }
       event = await window.nostr.signEvent(event)
-      await Promise.all(pool.publish(getAllRelays(), event))
+      Promise.all(pool.publish(getAllRelays(), event))
         .catch(e => console.log('error publishing', e))
       setNewEventContent('')
-      fetchEvents()
+      fetchEvents(pubkey)
     } catch (error) {
       console.error('Error posting event:', error)
     }
