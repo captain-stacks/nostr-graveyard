@@ -143,15 +143,14 @@ function Page() {
     }
 
     try {
-      const event = {
+      let event = {
         kind: 1,
         pubkey: pubkey,
         created_at: Math.floor(Date.now() / 1000),
         content: newEventContent,
         tags: []
       }
-      event.id = getEventHash(event)
-      event.sig = await window.nostr.signEvent(event)
+      event = await window.nostr.signEvent(event)
       await pool.publish(getAllRelays(), event)
       setNewEventContent('')
       fetchEvents()
