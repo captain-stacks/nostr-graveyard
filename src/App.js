@@ -39,6 +39,8 @@ function Page() {
   const [events, setEvents] = useState([])
   const [authorNames, setAuthorNames] = useState({})
   const [newEventContent, setNewEventContent] = useState('')
+  const [contactList, setContactList] = useState()
+  const [muteList, setMuteList] = useState(new Set(JSON.parse(localStorage.getItem('muteList') || '[]')))
 
   useEffect(() => {
     async function init() {
@@ -47,7 +49,7 @@ function Page() {
       const decodedPubkey = npub ? nip19.decode(npub).data : pubkey
       setPubkey(decodedPubkey)
       //fetchProfile(decodedPubkey)
-      fetchEvents(pubkey)
+      fetchEvents(decodedPubkey)
       setLoading(false)
     }
     init()
@@ -71,27 +73,37 @@ function Page() {
     }
   }
 
-  const fetchEvents = async (pubkey) => {
+  const fetchEvents = async (pubkey, updatedMuteList) => {
     try {
-      const since = Math.floor(Date.now() / 1000) - 1 * 60 * 60
-      const contactListEvents = await pool.querySync(getAllRelays(), {
-        kinds: [3],
-        authors: [pubkey]
-      })
-      const mostRecentContactListEvent = contactListEvents.sort((a, b) => b.created_at - a.created_at)[0]
-      let authors = new Set(
-        mostRecentContactListEvent 
-          ? mostRecentContactListEvent.tags
-              .filter(tag => tag[0] === 'p')
-              .map(tag => tag[1])
-          : []
-      )
+      updatedMuteList ??= muteList
+      const since = Math.floor(Date.now() / 1000) - 1 * 24 * 60 * 60
+      let mentionsSince
+      //const mentionsSince = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60
+      let authors
+      if (contactList) {
+        authors = contactList
+      } else {
+        const contactListEvents = await pool.querySync(getAllRelays(), {
+          kinds: [3],
+          authors: [pubkey]
+        })
+        const mostRecentContactListEvent = contactListEvents.sort((a, b) => b.created_at - a.created_at)[0]
+        authors = new Set(
+          mostRecentContactListEvent 
+            ? mostRecentContactListEvent.tags
+                .filter(tag => tag[0] === 'p')
+                .map(tag => tag[1])
+            : []
+        )
+        setContactList(authors)
+      }
       authors.add(pubkey)
       authors = [...authors]
       if (authors.length === 0) {
         console.error('No authors found in contact list')
         return
       }
+      authors = authors.filter(a => !updatedMuteList.has(a))
       let events = await pool.querySync(getAllRelays(), {
         kinds: [1],
         authors: authors,
@@ -99,16 +111,20 @@ function Page() {
       })
       const mentions = await pool.querySync(getAllRelays(), {
         '#p': [pubkey],
-        since: since
+        since: mentionsSince ?? since
       })
       events = events
         .concat(mentions.filter(
           e => ![3, 4].includes(e.kind) &&
           e.content.indexOf('direct message activity:') === -1))
         .sort((a, b) => b.created_at - a.created_at)
-      // remove duplicates
       events = events.filter((e, i) => events.findIndex(e2 => e2.id === e.id) === i)
+      events = events.map(event => ({
+        ...event,
+        content: replaceYouTubeLinks(event.content)
+      }))
       setEvents(events)
+      setLoading(false)
       const authorPubkeys = [...new Set(events.map(event => event.pubkey))]
       const authorProfiles = await fetchAuthorProfiles(authorPubkeys)
       setAuthorNames(authorProfiles)
@@ -152,7 +168,7 @@ function Page() {
       }
       event = await window.nostr.signEvent(event)
       Promise.all(pool.publish(getAllRelays(), event))
-        .catch(e => console.log('error publishing', e))
+        .catch(e => console.error('error publishing', e))
       setNewEventContent('')
       fetchEvents(pubkey)
     } catch (error) {
@@ -168,8 +184,25 @@ function Page() {
     })
   }
 
+  const openProfile = (user) => {
+    window.open(`https://primal.net/p/${nip19.npubEncode(user)}`, '_blank')
+  }
+
+  const toggleMuteUser = (user) => {
+    setLoading(true)
+    const updatedMuteList = new Set(muteList)
+    if (updatedMuteList.has(user)) {
+      updatedMuteList.delete(user)
+    } else {
+      updatedMuteList.add(user)
+    }
+    setMuteList(updatedMuteList)
+    localStorage.setItem('muteList', JSON.stringify([...updatedMuteList]))
+    fetchEvents(pubkey, updatedMuteList)
+  }
+
   return (
-    <Box sx={{ padding: 5 }}>
+    <Box sx={{ padding: 2 }}>
       {loading ? (
         <LinearProgress />
       ) : (
@@ -180,18 +213,22 @@ function Page() {
             value={newEventContent}
             onChange={(e) => setNewEventContent(e.target.value)}
             placeholder="Enter event content"
-            style={{ width: '50%' }}
-          />
+            style={{ width: '700px' }}
+          />&nbsp;
           <button onClick={handlePostEvent}>Post Event</button>
           <p/>
-          <table style={{width: '75%'}}>
+          <table style={{ width: '75%', borderCollapse: 'collapse' }}>
             <tbody>
               {events.map(event => (
-                <tr key={event.id} style={{ backgroundColor:
-                  event.tags.some(tag => tag[0] === 'p' && tag[1] === pubkey)
-                    ? 'lightgreen' : 'white' }}>
-                  <td>{authorNames[event.pubkey] || event.pubkey}</td>
-                  <td style={{ wordWrap: 'break-word', maxWidth: '500px'}}>{event.content}</td>
+                <tr key={event.id} style={{
+                  backgroundColor: event.tags.some(tag => tag[0] === 'p' && tag[1] === pubkey)
+                    ? 'lightgreen' : 'white',
+                  border: '1px solid black' }}>
+                  <td onClick={() => openProfile(event.pubkey)} style={{ cursor: 'pointer', color: 'blue' }}>
+                    {authorNames[event.pubkey] || 'Unknown'}
+                  </td>
+                  <td style={{ wordWrap: 'break-word', maxWidth: '600px'}}
+                    dangerouslySetInnerHTML={{ __html: event.content }}></td>
                   <td>{new Date(event.created_at * 1000).toLocaleString()}</td>
                 </tr>
               ))}
@@ -206,20 +243,17 @@ function Page() {
 function getAllRelays() {
   return [
     'wss://relay.snort.social',
-    'wss://nostr-pub.wellorder.net',
     "wss://nos.lol",
     "wss://relay.damus.io",
     "wss://nostr21.com",
-    "wss://offchain.pub",
-    'wss://nostr.thank.eu',
-    "wss://nostr.mom",
-    "wss://nostr.inosta.cc",
-    "wss://nostr.fmt.wiz.biz",
-    "wss://relay.primal.net",
-    "wss://bitcoiner.social",
-    "wss://nostr.lu.ke",
-    "wss://nostr.oxtr.dev",
   ]
+}
+
+const replaceYouTubeLinks = (content) => {
+  const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g
+  return content.replace(youtubeRegex, (match, p1) => {
+    return `<iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/${p1}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`
+  })
 }
 
 export default App
