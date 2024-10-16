@@ -47,8 +47,7 @@ function Page() {
   useEffect(() => {
     async function init() {
       await new Promise(resolve => setTimeout(resolve, 200))
-      const pubkey = await window.nostr.getPublicKey()
-      const decodedPubkey = npub ? nip19.decode(npub).data : pubkey
+      const decodedPubkey = npub ? nip19.decode(npub).data : await window.nostr.getPublicKey()
       setPubkey(decodedPubkey)
       //fetchProfile(decodedPubkey)
       fetchEvents(decodedPubkey)
